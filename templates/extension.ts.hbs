@@ -1,0 +1,205 @@
+import * as vscode from "vscode";
+import * as os from "os";
+import * as path from "path";
+import * as crypto from "crypto";
+import * as childProcess from "child_process";
+import winston from "winston";
+import { OutputChannelTransport } from "winston-transport-vscode";
+
+import { KonveyorCoreApi, ProviderRegistration } from "@editor-extensions/shared";
+import { {{pascalLanguage}}ExternalProviderManager } from "./{{pascalLanguage}}ExternalProviderManager";
+{{#if lsp.proxyRequired}}
+import { {{pascalLanguage}}VscodeProxyServer } from "./{{pascalLanguage}}VscodeProxyServer";
+{{/if}}
+import {
+  CORE_EXTENSION_ID,
+  EXTENSION_NAME,
+  EXTENSION_VERSION,
+  GIT_SHA,
+  BUILD_TIME,
+} from "./utilities/constants";
+
+let providerManager: {{pascalLanguage}}ExternalProviderManager | undefined;
+{{#if lsp.proxyRequired}}
+let lspProxyServer: {{pascalLanguage}}VscodeProxyServer | undefined;
+{{/if}}
+let logger: winston.Logger;
+
+export async function activate(
+  context: vscode.ExtensionContext
+): Promise<void> {
+  // Setup logger
+  const logOutputChannel = vscode.window.createOutputChannel(EXTENSION_NAME, {
+    log: true,
+  });
+  context.subscriptions.push(logOutputChannel);
+
+  logger = winston.createLogger({
+    level: "debug",
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.printf(({ level, message, timestamp }) => {
+        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+      })
+    ),
+    transports: [
+      new winston.transports.File({
+        filename: path.join(context.logUri.fsPath, `${EXTENSION_NAME}.log`),
+        maxsize: 5 * 1024 * 1024,
+        maxFiles: 3,
+      }),
+      new OutputChannelTransport({ outputChannel: logOutputChannel }),
+    ],
+  });
+
+  logger.info(`Activating ${EXTENSION_NAME} v${EXTENSION_VERSION}`);
+  logger.debug(`Git SHA: ${GIT_SHA}, Built: ${BUILD_TIME}`);
+
+{{#if dependencies.runtimeCheck}}
+  // Check for runtime
+  try {
+    const result = childProcess.execSync("{{dependencies.runtimeCheck.command}}", {
+      encoding: "utf-8",
+    });
+    logger.info(`Runtime check: ${result.trim()}`);
+  } catch (err) {
+    const message = "{{displayName}} runtime not found. Please install {{displayName}}.";
+    logger.error(message);
+    vscode.window.showErrorMessage(message);
+    return;
+  }
+{{/if}}
+
+{{#if dependencies.vscodeExtensions.length}}
+  // Check for required VS Code extensions
+{{#each dependencies.vscodeExtensions}}
+  const {{camelCase (extractExtName this)}}Ext = vscode.extensions.getExtension("{{this}}");
+  if (!{{camelCase (extractExtName this)}}Ext) {
+    const message = "Required extension {{this}} not found. Please install it.";
+    logger.warn(message);
+    vscode.window.showWarningMessage(message);
+  }
+{{/each}}
+{{/if}}
+
+  // Get core extension
+  const coreExtension = vscode.extensions.getExtension(CORE_EXTENSION_ID);
+  if (!coreExtension) {
+    const message = `Core extension ${CORE_EXTENSION_ID} not found`;
+    logger.error(message);
+    vscode.window.showErrorMessage(message);
+    return;
+  }
+
+  const coreApi: KonveyorCoreApi = await coreExtension.activate();
+  logger.info(`Core extension activated: v${coreApi.version}`);
+
+  // Get workspace folder
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    logger.warn("No workspace folder open");
+    return;
+  }
+
+  const workspaceLocation = workspaceFolders[0].uri.fsPath;
+  logger.info(`Workspace: ${workspaceLocation}`);
+
+  // Create socket paths
+  const randomSuffix = crypto.randomBytes(8).toString("hex");
+  const providerSocketPath = path.join(
+    os.tmpdir(),
+    `konveyor-{{language}}-provider-${randomSuffix}.sock`
+  );
+{{#if lsp.proxyRequired}}
+  const lspProxySocketPath = path.join(
+    os.tmpdir(),
+    `konveyor-{{language}}-lsp-${randomSuffix}.sock`
+  );
+{{/if}}
+
+  // Start provider manager
+  try {
+    providerManager = new {{pascalLanguage}}ExternalProviderManager(
+      context,
+      logger,
+      providerSocketPath
+    );
+    await providerManager.start();
+    context.subscriptions.push(providerManager);
+    logger.info("Provider manager started");
+  } catch (err) {
+    const message = `Failed to start {{displayName}} provider: ${err}`;
+    logger.error(message);
+    vscode.window.showWarningMessage(message);
+    return;
+  }
+
+{{#if lsp.proxyRequired}}
+  // Start LSP proxy server
+  try {
+    lspProxyServer = new {{pascalLanguage}}VscodeProxyServer(
+      logger,
+      lspProxySocketPath
+    );
+    await lspProxyServer.start();
+    context.subscriptions.push(lspProxyServer);
+    logger.info("LSP proxy server started");
+  } catch (err) {
+    const message = `Failed to start LSP proxy: ${err}`;
+    logger.error(message);
+    vscode.window.showWarningMessage(message);
+  }
+{{/if}}
+
+  // Determine provider address
+  const providerAddress =
+    process.platform === "win32"
+      ? `passthrough:unix://${providerSocketPath}`
+      : `unix:${providerSocketPath}`;
+
+  // Register provider with core
+  const registration: ProviderRegistration = {
+    name: "{{language}}",
+    providerConfig: {
+      name: "{{lsp.providerName}}",
+      address: providerAddress,
+      useSocket: true,
+      initConfig: [
+        {
+          location: workspaceLocation,
+          analysisMode: "{{analysis.mode}}",
+{{#if lsp.proxyRequired}}
+          pipeName: lspProxySocketPath,
+{{else}}
+          pipeName: "",
+{{/if}}
+          providerSpecificConfig: {
+{{#each providerSpecificConfig}}
+            {{@key}}: {{{json this}}},
+{{/each}}
+          },
+        },
+      ],
+      contextLines: {{analysis.contextLines}},
+    },
+    rulesetsPaths: [],
+  };
+
+  const providerDisposable = coreApi.registerProvider(registration);
+  context.subscriptions.push(providerDisposable);
+  logger.info("Provider registered with core");
+
+  // Subscribe to analysis events
+  const analysisDisposable = coreApi.onAnalysisComplete((results) => {
+    logger.info(`Analysis complete: ${results.issues?.length ?? 0} issues found`);
+  });
+  context.subscriptions.push(analysisDisposable);
+}
+
+export function deactivate(): void {
+  logger?.info("Deactivating extension");
+{{#if lsp.proxyRequired}}
+  lspProxyServer?.dispose();
+{{/if}}
+  providerManager?.dispose();
+}

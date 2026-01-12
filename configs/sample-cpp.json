@@ -1,0 +1,47 @@
+{
+  "language": "cpp",
+  "displayName": "C++",
+  "languageId": "cpp",
+  "activation": {
+    "fileExtensions": [".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx"],
+    "filePatterns": ["*.cpp", "*.cxx", "*.cc", "*.c", "*.h", "*.hpp", "*.hxx"],
+    "workspaceContains": ["CMakeLists.txt", "Makefile", "compile_commands.json"],
+    "additionalLanguageIds": ["c"]
+  },
+  "provider": {
+    "type": "generic",
+    "binaryName": "generic-external-provider",
+    "binaryArgs": ["-name", "cpp", "-socket"],
+    "assetSource": {
+      "repository": "konveyor/kai",
+      "releaseTag": "v0.8.0-beta.5",
+      "assetNamePattern": "generic-external-provider-{platform}"
+    },
+    "platforms": [
+      { "os": "linux", "arch": "x64" },
+      { "os": "linux", "arch": "arm64" },
+      { "os": "darwin", "arch": "x64" },
+      { "os": "darwin", "arch": "arm64" },
+      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
+    ]
+  },
+  "lsp": {
+    "enabled": true,
+    "proxyRequired": true,
+    "providerName": "cpp",
+    "socketType": "unix"
+  },
+  "dependencies": {
+    "vscodeExtensions": ["ms-vscode.cpptools"],
+    "runtimeCheck": {
+      "command": "g++ --version"
+    }
+  },
+  "providerSpecificConfig": {
+    "lspServerName": "cpp"
+  },
+  "analysis": {
+    "mode": "source-only",
+    "contextLines": 10
+  }
+}

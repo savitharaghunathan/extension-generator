@@ -1,0 +1,48 @@
+{
+  "language": "python",
+  "displayName": "Python",
+  "languageId": "python",
+  "activation": {
+    "fileExtensions": [".py", ".pyw"],
+    "filePatterns": ["*.py", "*.pyw"],
+    "workspaceContains": ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"]
+  },
+  "provider": {
+    "type": "generic",
+    "binaryName": "generic-external-provider",
+    "binaryArgs": ["-name", "python", "-socket"],
+    "assetSource": {
+      "repository": "konveyor/kai",
+      "releaseTag": "v0.8.0-beta.5",
+      "assetNamePattern": "generic-external-provider-{platform}"
+    },
+    "platforms": [
+      { "os": "linux", "arch": "x64" },
+      { "os": "linux", "arch": "arm64" },
+      { "os": "darwin", "arch": "x64" },
+      { "os": "darwin", "arch": "arm64" },
+      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
+    ]
+  },
+  "lsp": {
+    "enabled": true,
+    "proxyRequired": true,
+    "providerName": "python",
+    "socketType": "unix"
+  },
+  "dependencies": {
+    "vscodeExtensions": ["ms-python.python"],
+    "runtimeCheck": {
+      "command": "python3 --version",
+      "versionPattern": "Python (\\d+\\.\\d+\\.\\d+)",
+      "minVersion": "3.8.0"
+    }
+  },
+  "providerSpecificConfig": {
+    "lspServerName": "python"
+  },
+  "analysis": {
+    "mode": "source-only",
+    "contextLines": 10
+  }
+}

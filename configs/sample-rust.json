@@ -1,0 +1,44 @@
+{
+  "language": "rust",
+  "displayName": "Rust",
+  "languageId": "rust",
+  "activation": {
+    "fileExtensions": [".rs"],
+    "filePatterns": ["*.rs"],
+    "workspaceContains": ["Cargo.toml"]
+  },
+  "provider": {
+    "type": "standalone",
+    "binaryName": "rust-analyzer-provider",
+    "binaryArgs": ["--socket"],
+    "assetSource": {
+      "repository": "konveyor/kai",
+      "releaseTag": "v0.9.0",
+      "assetNamePattern": "rust-analyzer-provider-{platform}"
+    },
+    "platforms": [
+      { "os": "linux", "arch": "x64" },
+      { "os": "darwin", "arch": "x64" },
+      { "os": "darwin", "arch": "arm64" },
+      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
+    ]
+  },
+  "lsp": {
+    "enabled": false,
+    "proxyRequired": false,
+    "providerName": "rust",
+    "socketType": "unix"
+  },
+  "dependencies": {
+    "vscodeExtensions": ["rust-lang.rust-analyzer"],
+    "runtimeCheck": {
+      "command": "rustc --version",
+      "versionPattern": "rustc (\\d+\\.\\d+\\.\\d+)"
+    }
+  },
+  "providerSpecificConfig": {},
+  "analysis": {
+    "mode": "source-only",
+    "contextLines": 10
+  }
+}

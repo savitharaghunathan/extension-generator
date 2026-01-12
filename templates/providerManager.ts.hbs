@@ -1,0 +1,114 @@
+import * as vscode from "vscode";
+import * as path from "path";
+import * as os from "os";
+import * as fs from "fs";
+import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import winston from "winston";
+
+export class {{pascalLanguage}}ExternalProviderManager implements vscode.Disposable {
+  private process: ChildProcessWithoutNullStreams | null = null;
+  private disposed = false;
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly logger: winston.Logger,
+    private readonly socketPath: string
+  ) {}
+
+  async start(): Promise<void> {
+    const binaryPath = this.getProviderBinaryPath();
+    this.logger.info(`Starting provider: ${binaryPath}`);
+
+    const args = this.getProviderArgs();
+    this.logger.debug(`Provider args: ${args.join(" ")}`);
+
+    this.process = spawn(binaryPath, args, {
+      cwd: this.context.extensionPath,
+    });
+
+    this.process.stdout.on("data", (data) => {
+      this.logger.debug(`[provider stdout] ${data.toString().trim()}`);
+    });
+
+    this.process.stderr.on("data", (data) => {
+      this.logger.warn(`[provider stderr] ${data.toString().trim()}`);
+    });
+
+    this.process.on("error", (err) => {
+      this.logger.error(`Provider process error: ${err.message}`);
+    });
+
+    this.process.on("exit", (code, signal) => {
+      if (!this.disposed) {
+        this.logger.warn(`Provider exited: code=${code}, signal=${signal}`);
+      }
+    });
+
+    // Wait for provider to be ready
+    await this.waitForReady();
+  }
+
+  private getProviderBinaryPath(): string {
+    const platform = os.platform();
+    const arch = os.arch();
+
+    let binaryName = "{{provider.binaryName}}";
+    let platformDir: string;
+
+    switch (platform) {
+      case "linux":
+        platformDir = arch === "arm64" ? "linux-aarch64" : "linux-x86_64";
+        break;
+      case "darwin":
+        platformDir = arch === "arm64" ? "macos-arm64" : "macos-x86_64";
+        break;
+      case "win32":
+        platformDir = "windows-x64";
+        binaryName += ".exe";
+        break;
+      default:
+        throw new Error(`Unsupported platform: ${platform}`);
+    }
+
+    return this.context.asAbsolutePath(
+      path.join("assets", "{{provider.binaryName}}", platformDir, binaryName)
+    );
+  }
+
+  private getProviderArgs(): string[] {
+    return [
+{{#each provider.binaryArgs}}
+      "{{this}}",
+{{/each}}
+      this.socketPath,
+    ];
+  }
+
+  private async waitForReady(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Provider startup timeout"));
+      }, 30000);
+
+      const checkSocket = () => {
+        if (fs.existsSync(this.socketPath)) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkSocket, 100);
+        }
+      };
+
+      checkSocket();
+    });
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    if (this.process) {
+      this.logger.info("Stopping provider process");
+      this.process.kill();
+      this.process = null;
+    }
+  }
+}

@@ -4,13 +4,25 @@ A CLI tool to automate the creation of new language extensions for the [Konveyor
 
 ## Features
 
-- **Interactive Mode**: Answer prompts to configure your extension
-- **Config File Mode**: Use JSON/YAML configuration files
+- **Interactive Mode**: Step-by-step prompts to configure your extension
+- **Config File Mode**: Use JSON/YAML configuration files for automation
+- **Dry Run**: Preview all changes before modifying any files
 - **Git Integration**: Automatically creates feature branches and commits
 - **PR Creation**: Optionally push and create pull requests
+- **Dynamic Configuration**: Reads release tags from target repository
 - **Template-based**: Uses Handlebars templates for consistent code generation
 
 ## Installation
+
+### Prerequisites
+
+- Node.js >= 18.0.0
+- npm
+- Git
+- A local clone of the [editor-extensions](https://github.com/konveyor/editor-extensions) repository
+- (Optional) [GitHub CLI](https://cli.github.com/) for PR creation
+
+### Setup
 
 ```bash
 # Clone the repository
@@ -27,63 +39,80 @@ npm run build
 npm link
 ```
 
-## Usage
+## Quick Start
 
-### Interactive Mode
+### Option 1: Dry Run (Preview Changes)
 
 ```bash
-# Run with local editor-extensions repo
-generate-extension --interactive --repo ~/projects/editor-extensions
-
-# Or if not linked globally
-npm start -- --interactive --repo ~/projects/editor-extensions
+node dist/index.js --config configs/sample-python.json \
+  --repo /path/to/editor-extensions \
+  --dry-run
 ```
 
-### Configuration File Mode
+### Option 2: Interactive Mode
 
 ```bash
-# Generate from JSON config
-generate-extension --config ./configs/python.json --repo ~/projects/editor-extensions
-
-# Generate from YAML config
-generate-extension --config ./configs/rust.yaml --repo ~/projects/editor-extensions
+node dist/index.js --interactive --repo /path/to/editor-extensions
 ```
 
-### Full Automation
+### Option 3: Config File Mode
 
 ```bash
-# Generate, push, and create PR
-generate-extension --config ./configs/python.json \
-  --repo ~/projects/editor-extensions \
+node dist/index.js --config configs/sample-python.json \
+  --repo /path/to/editor-extensions
+```
+
+### Option 4: Full Automation
+
+```bash
+node dist/index.js --config configs/sample-python.json \
+  --repo /path/to/editor-extensions \
   --push \
   --create-pr
 ```
 
-### Dry Run
-
-```bash
-# Preview changes without modifying files
-generate-extension --interactive --repo ~/projects/editor-extensions --dry-run
-```
-
 ## CLI Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-c, --config <path>` | Path to configuration file (JSON/YAML) | - |
-| `-i, --interactive` | Run in interactive mode | false |
-| `-r, --repo <path>` | Path to editor-extensions repo | ./editor-extensions |
-| `-b, --branch <name>` | Branch name for changes | feature/{language}-extension |
-| `--base-branch <name>` | Base branch to create from | main |
-| `-d, --dry-run` | Preview changes without creating files | false |
-| `-f, --force` | Overwrite existing files | false |
-| `--no-commit` | Skip git commit | false |
-| `--push` | Push branch to remote | false |
-| `--create-pr` | Create pull request (requires gh CLI) | false |
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--config <path>` | `-c` | Path to configuration file (JSON/YAML) | - |
+| `--interactive` | `-i` | Run in interactive mode | `false` |
+| `--repo <path>` | `-r` | Path to editor-extensions repository | `./editor-extensions` |
+| `--branch <name>` | `-b` | Branch name for changes | `feature/{language}-extension` |
+| `--base-branch <name>` | | Base branch to create from | `main` |
+| `--dry-run` | `-d` | Preview changes without modifying files | `false` |
+| `--force` | `-f` | Overwrite existing extension files | `false` |
+| `--no-commit` | | Skip git commit after generation | `false` |
+| `--push` | | Push branch to remote after generation | `false` |
+| `--create-pr` | | Create a pull request (requires `--push` and `gh` CLI) | `false` |
+| `--version` | `-V` | Show version number | - |
+| `--help` | `-h` | Show help | - |
 
-## Configuration Schema
+## Configuration
 
-### Example: Python Extension
+### Minimal Configuration
+
+```json
+{
+  "language": "python",
+  "displayName": "Python",
+  "languageId": "python",
+  "activation": {
+    "fileExtensions": [".py", ".pyw"]
+  },
+  "provider": {
+    "type": "generic",
+    "binaryName": "generic-external-provider",
+    "binaryArgs": ["-name", "python", "-socket"]
+  },
+  "lsp": {
+    "enabled": true,
+    "proxyRequired": true
+  }
+}
+```
+
+### Full Configuration
 
 ```json
 {
@@ -92,7 +121,9 @@ generate-extension --interactive --repo ~/projects/editor-extensions --dry-run
   "languageId": "python",
   "activation": {
     "fileExtensions": [".py", ".pyw"],
-    "workspaceContains": ["requirements.txt", "pyproject.toml"]
+    "filePatterns": ["*.py", "*.pyw"],
+    "workspaceContains": ["requirements.txt", "pyproject.toml"],
+    "additionalLanguageIds": ["jupyter"]
   },
   "provider": {
     "type": "generic",
@@ -101,85 +132,137 @@ generate-extension --interactive --repo ~/projects/editor-extensions --dry-run
     "assetSource": {
       "repository": "konveyor/kai",
       "releaseTag": "v0.8.0-beta.5"
-    }
+    },
+    "platforms": [
+      { "os": "linux", "arch": "x64" },
+      { "os": "linux", "arch": "arm64" },
+      { "os": "darwin", "arch": "x64" },
+      { "os": "darwin", "arch": "arm64" },
+      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
+    ]
   },
   "lsp": {
     "enabled": true,
-    "proxyRequired": true
+    "proxyRequired": true,
+    "providerName": "python",
+    "socketType": "unix"
   },
   "dependencies": {
     "vscodeExtensions": ["ms-python.python"],
     "runtimeCheck": {
-      "command": "python3 --version"
+      "command": "python3 --version",
+      "minVersion": "3.8.0"
     }
+  },
+  "analysis": {
+    "mode": "source-only",
+    "contextLines": 10
   }
 }
 ```
 
 ### Configuration Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `language` | string | Yes | Language identifier (e.g., "python") |
-| `displayName` | string | Yes | Display name (e.g., "Python") |
-| `languageId` | string | Yes | VS Code language ID |
-| `activation.fileExtensions` | string[] | Yes | File extensions that trigger activation |
-| `activation.workspaceContains` | string[] | No | Project files indicating workspace type |
-| `provider.type` | enum | Yes | "generic", "standalone", or "custom" |
-| `provider.binaryName` | string | Yes | Provider binary name |
-| `provider.binaryArgs` | string[] | Yes | CLI arguments for provider |
-| `lsp.enabled` | boolean | Yes | Whether LSP is used |
-| `lsp.proxyRequired` | boolean | Conditional | If JSON-RPC proxy is needed |
-| `dependencies.vscodeExtensions` | string[] | No | Required VS Code extensions |
-| `dependencies.runtimeCheck.command` | string | No | Command to verify runtime |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `language` | Yes | Language identifier (lowercase, e.g., "python") |
+| `displayName` | Yes | Display name (e.g., "Python") |
+| `languageId` | Yes | VS Code language ID |
+| `activation.fileExtensions` | Yes | File extensions that trigger activation |
+| `activation.workspaceContains` | No | Project files indicating workspace type |
+| `provider.type` | Yes | "generic", "standalone", or "custom" |
+| `provider.binaryName` | Yes | Provider binary name |
+| `provider.binaryArgs` | No | CLI arguments for provider |
+| `provider.assetSource` | No | GitHub release info (read from repo if omitted) |
+| `lsp.enabled` | Yes | Whether LSP is used |
+| `lsp.proxyRequired` | No | If JSON-RPC proxy is needed |
+| `dependencies.vscodeExtensions` | No | Required VS Code extensions |
 
-## What Gets Generated
+## Provider Types
 
-### New Files (9 files per extension)
+### Generic (with LSP)
+
+Uses `generic-external-provider` with a JSON-RPC proxy. Best for languages with existing VS Code extensions that provide LSP.
+
+```json
+{
+  "provider": { "type": "generic", "binaryName": "generic-external-provider" },
+  "lsp": { "enabled": true, "proxyRequired": true }
+}
+```
+
+### Standalone
+
+Custom provider binary without LSP proxy. Uses tree-sitter or custom analysis.
+
+```json
+{
+  "provider": { "type": "standalone", "binaryName": "rust-analyzer-provider" },
+  "lsp": { "enabled": false, "proxyRequired": false }
+}
+```
+
+### Custom
+
+Minimal scaffold for manual configuration.
+
+## Generated Files
+
+### New Extension Files (8-9 files)
 
 ```
 vscode/{language}/
 ├── package.json              # Extension manifest
 ├── tsconfig.json             # TypeScript config
 ├── webpack.config.js         # Webpack bundler config
+├── .eslintrc.json            # ESLint rules
 ├── LICENSE.md                # Apache 2.0 license
-├── .eslintrc.json            # ESLint config
 └── src/
-    ├── extension.ts          # Main entry point
-    ├── {Language}ExternalProviderManager.ts
-    ├── {Language}VscodeProxyServer.ts  # (if LSP enabled)
+    ├── extension.ts                          # Entry point
+    ├── {Language}ExternalProviderManager.ts  # Provider lifecycle
+    ├── {Language}VscodeProxyServer.ts        # LSP proxy (if proxyRequired)
     └── utilities/
-        └── constants.ts      # Build-time constants
+        └── constants.ts                      # Build constants
 ```
 
-### Modified Files (12 files)
+### Modified Repository Files (7 files)
 
-- `package.json` - Add workspace and scripts
-- `.github/workflows/ci-repo.yml` - Add build/test steps
-- `.github/workflows/release.yml` - Add publish steps
-- `scripts/collect-assets.js` - Add asset download
-- `scripts/copy-dist.js` - Add dist copy logic
-- `scripts/package-extensions.js` - Add packaging
-- `.vscode/launch.json` - Add debug config
-- `konveyor-extensions.code-workspace` - Add folder
-- `tests/.env.example` - Add VSIX variable
+| File | Changes |
+|------|---------|
+| `package.json` | Add workspace, add package script |
+| `.github/workflows/ci-repo.yml` | Add package step |
+| `scripts/collect-assets.js` | Add asset configuration |
+| `scripts/copy-dist.js` | Add dist copy logic |
+| `scripts/package-extensions.js` | Add to valid extensions |
+| `.vscode/launch.json` | Add debug configuration |
+| `konveyor-extensions.code-workspace` | Add workspace folder |
 
-## Provider Types
+## Dynamic Configuration
 
-### Generic (with LSP)
-Uses `generic-external-provider` with a JSON-RPC proxy. Best for languages with existing VS Code extensions that provide LSP.
+The generator reads configuration from the target editor-extensions repository:
 
-### Standalone
-Custom provider binary without LSP proxy. Uses tree-sitter or custom analysis. Best for languages needing custom analysis engines.
+```
+Reading configuration from /path/to/editor-extensions...
+  Version: 0.4.0
+  Release tag: v0.8.0-beta.5
+```
 
-### Custom
-Minimal scaffold for manual configuration. Use when neither generic nor standalone fits.
+These values are used as defaults when:
+- Running in interactive mode
+- Config file doesn't specify `assetSource.releaseTag`
 
-## Requirements
+## Sample Configurations
 
-- Node.js >= 18.0.0
-- Git
-- (Optional) GitHub CLI (`gh`) for PR creation
+Sample configurations are available in the `configs/` directory:
+
+- `sample-python.json` - Python with generic provider and LSP proxy
+- `sample-rust.json` - Rust with standalone provider (no LSP)
+- `sample-cpp.json` - C++ with generic provider
+
+## Documentation
+
+- [Usage Guide](docs/usage.md) - Comprehensive usage documentation
+- [Dry Run Examples](docs/examples/dry-run.md) - Detailed dry run output examples
 
 ## Development
 

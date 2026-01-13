@@ -1,15 +1,17 @@
-# Konveyor Extension Generator
+# Konveyor Extension Generator - Implementation Plan
 
 ## Overview
 
 This is a **standalone CLI tool** that automates the creation of new language extensions for the [Konveyor editor-extensions](https://github.com/konveyor/editor-extensions) project.
 
 **Key Design Decision**: This tool lives in a separate repository and operates on a clone of the editor-extensions repo. When generating a new extension, it:
-1. Clones or uses an existing editor-extensions repository
-2. Creates a new feature branch (e.g., `feature/python-extension`)
-3. Generates all necessary files
-4. Commits the changes
-5. Optionally pushes and creates a PR
+1. Uses an existing editor-extensions repository
+2. Reads configuration (release tags, versions) from the target repo
+3. Creates a new feature branch (e.g., `feature/python-extension`)
+4. Generates all necessary files using Handlebars templates
+5. Modifies existing repository files
+6. Commits the changes
+7. Optionally pushes and creates a PR
 
 ---
 
@@ -20,9 +22,135 @@ This is a **standalone CLI tool** that automates the creation of new language ex
 
 ---
 
-## Part 1: CLI Interface
+## Implementation Status
 
-### 1.1 Command Line Options
+### Phase 1: Core Infrastructure - COMPLETED
+
+- [x] Set up TypeScript project with proper build
+- [x] Implement CLI with commander.js
+- [x] Create Zod validation schema
+- [x] Implement config loader (JSON/YAML)
+- [x] Implement utility functions (pascalCase, camelCase, capitalize)
+
+### Phase 2: Git Operations - COMPLETED
+
+- [x] Implement repository validation
+- [x] Implement branch creation
+- [x] Implement commit generation
+- [x] Implement push operations
+- [x] Implement PR creation (gh CLI)
+
+### Phase 3: Interactive Mode - COMPLETED
+
+- [x] Implement all prompts with inquirer
+- [x] Add input validation
+- [x] Add default value logic (from repo config)
+- [x] Add confirmation step
+
+### Phase 4: File Generation - COMPLETED
+
+- [x] Create all Handlebars templates
+  - [x] package.json.hbs
+  - [x] extension.ts.hbs
+  - [x] providerManager.ts.hbs
+  - [x] proxyServer.ts.hbs (conditional)
+  - [x] constants.ts.hbs
+  - [x] tsconfig.json.hbs
+  - [x] webpack.config.js.hbs
+  - [x] eslintrc.json.hbs
+  - [x] LICENSE.md.hbs
+- [x] Implement template rendering with Handlebars
+- [x] Implement file writing with conflict detection
+
+### Phase 5: File Modification - COMPLETED
+
+- [x] Implement package.json updates (workspaces, scripts)
+- [x] Implement CI workflow YAML updates
+- [x] Implement collect-assets.js updates
+- [x] Implement copy-dist.js updates
+- [x] Implement package-extensions.js updates
+- [x] Implement launch.json updates
+- [x] Implement workspace file updates
+
+### Phase 6: Dry Run Mode - COMPLETED
+
+- [x] Skip file writes in dry-run mode
+- [x] Skip directory creation in dry-run mode
+- [x] Display new file content with box formatting
+- [x] Display modification diffs with color coding
+- [x] Show change descriptions for modified files
+
+### Phase 7: Dynamic Configuration - COMPLETED
+
+- [x] Read version from target repo's package.json
+- [x] Parse releaseTag from scripts/collect-assets.js
+- [x] Parse org/repo configuration
+- [x] Use repo config as defaults in interactive mode
+- [x] Use repo config as fallbacks in generator
+
+### Phase 8: Documentation - COMPLETED
+
+- [x] Create README.md with usage examples
+- [x] Create docs/usage.md with comprehensive guide
+- [x] Create docs/examples/dry-run.md with example outputs
+- [x] Add sample configurations (python, rust, cpp)
+
+---
+
+## Project Structure
+
+```
+extension-generator/
+├── package.json              # NPM package config
+├── tsconfig.json             # TypeScript config
+├── .gitignore
+├── README.md                 # User documentation
+├── PLAN.md                   # This file
+│
+├── docs/
+│   ├── usage.md              # Comprehensive usage guide
+│   └── examples/
+│       └── dry-run.md        # Dry run examples
+│
+├── src/
+│   ├── index.ts              # CLI entry point
+│   │
+│   ├── lib/
+│   │   ├── interactive.ts    # Inquirer prompts
+│   │   ├── config-loader.ts  # JSON/YAML config loading
+│   │   ├── validator.ts      # Zod schema validation
+│   │   ├── generator.ts      # File generation logic
+│   │   ├── git.ts            # Git operations (simple-git)
+│   │   ├── repo-config.ts    # Read config from target repo
+│   │   └── utils.ts          # Helper utilities
+│   │
+│   └── types/
+│       └── config.ts         # TypeScript interfaces & Zod schemas
+│
+├── templates/                 # Handlebars templates
+│   ├── extension.ts.hbs
+│   ├── providerManager.ts.hbs
+│   ├── proxyServer.ts.hbs
+│   ├── constants.ts.hbs
+│   ├── package.json.hbs
+│   ├── webpack.config.js.hbs
+│   ├── tsconfig.json.hbs
+│   ├── eslintrc.json.hbs
+│   └── LICENSE.md.hbs
+│
+├── configs/                   # Sample configurations
+│   ├── sample-python.json
+│   ├── sample-rust.json
+│   └── sample-cpp.json
+│
+└── dist/                      # Compiled output
+```
+
+---
+
+## CLI Interface
+
+### Command Line Options
 
 ```bash
 generate-extension [options]
@@ -42,145 +170,28 @@ Options:
   -V, --version             Display version
 ```
 
-### 1.2 Usage Examples
+### Usage Examples
 
 ```bash
+# Dry run to preview changes
+node dist/index.js --config configs/sample-python.json \
+  --repo ~/projects/editor-extensions --dry-run
+
 # Interactive mode with local repo
-generate-extension --interactive --repo ~/projects/editor-extensions
+node dist/index.js --interactive --repo ~/projects/editor-extensions
 
 # From config file, auto-create branch
-generate-extension --config ./python.json --repo ~/projects/editor-extensions
+node dist/index.js --config ./python.json --repo ~/projects/editor-extensions
 
 # Full automation: generate, push, and create PR
-generate-extension --config ./rust.yaml --repo ~/projects/editor-extensions --push --create-pr
-
-# Dry run to preview changes
-generate-extension --interactive --repo ~/projects/editor-extensions --dry-run
+node dist/index.js --config ./rust.yaml --repo ~/projects/editor-extensions --push --create-pr
 ```
 
 ---
 
-## Part 2: Git Workflow
+## Configuration Schema
 
-### 2.1 Branch Management Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Extension Generator Flow                      │
-└─────────────────────────────────────────────────────────────────┘
-
-1. Validate editor-extensions repo exists
-   └─► If not: Error with instructions to clone
-
-2. Fetch latest from remote
-   └─► git fetch origin
-
-3. Check for uncommitted changes
-   └─► If dirty: Error or stash (with --force)
-
-4. Create feature branch from base
-   └─► git checkout -b feature/{language}-extension origin/main
-
-5. Generate extension files
-   └─► Create new files in vscode/{language}/
-   └─► Modify existing files (package.json, workflows, scripts)
-
-6. Stage and commit changes
-   └─► git add .
-   └─► git commit -m "feat: add {language} extension"
-
-7. [Optional] Push to remote
-   └─► git push -u origin feature/{language}-extension
-
-8. [Optional] Create PR
-   └─► gh pr create --title "Add {Language} Extension" --body "..."
-```
-
-### 2.2 Git Operations Implementation
-
-```typescript
-import simpleGit, { SimpleGit } from 'simple-git';
-
-interface GitWorkflow {
-  repoPath: string;
-  baseBranch: string;
-  featureBranch: string;
-}
-
-async function prepareRepository(options: GitWorkflow): Promise<SimpleGit> {
-  const git = simpleGit(options.repoPath);
-
-  // Verify it's a git repo
-  const isRepo = await git.checkIsRepo();
-  if (!isRepo) {
-    throw new Error(`${options.repoPath} is not a git repository`);
-  }
-
-  // Fetch latest
-  await git.fetch('origin');
-
-  // Check for uncommitted changes
-  const status = await git.status();
-  if (!status.isClean()) {
-    throw new Error('Repository has uncommitted changes. Commit or stash them first.');
-  }
-
-  // Create feature branch
-  await git.checkout(['-b', options.featureBranch, `origin/${options.baseBranch}`]);
-
-  return git;
-}
-
-async function commitChanges(git: SimpleGit, language: string): Promise<void> {
-  await git.add('.');
-  await git.commit(`feat: add ${language} extension
-
-- Add vscode/${language}/ extension scaffold
-- Update root package.json with workspace
-- Update CI workflows
-- Update asset collection scripts
-
-Generated by extension-generator`);
-}
-
-async function pushAndCreatePR(git: SimpleGit, options: {
-  branch: string;
-  language: string;
-  displayName: string;
-}): Promise<string> {
-  // Push branch
-  await git.push(['-u', 'origin', options.branch]);
-
-  // Create PR using gh CLI
-  const { execSync } = require('child_process');
-  const prBody = `## Summary
-- Add ${options.displayName} language extension
-- Generated by extension-generator tool
-
-## Files Added
-- \`vscode/${options.language}/\` - Extension source code
-- Updated CI workflows
-- Updated build scripts
-
-## Testing
-- [ ] Build passes
-- [ ] Extension activates correctly
-- [ ] Provider starts successfully`;
-
-  const result = execSync(
-    `gh pr create --title "feat: Add ${options.displayName} Extension" --body "${prBody}"`,
-    { encoding: 'utf-8', cwd: git.cwd }
-  );
-
-  return result.trim(); // Returns PR URL
-}
-```
-
----
-
-## Part 3: Configuration Schema
-
-### 3.1 Extension Configuration Interface
+### Extension Configuration Interface
 
 ```typescript
 interface ExtensionConfig {
@@ -192,35 +203,35 @@ interface ExtensionConfig {
   // Activation Configuration
   activation: {
     fileExtensions: string[];          // e.g., [".py", ".pyw"]
-    filePatterns: string[];            // e.g., ["*.py", "**/*.py"]
-    workspaceContains: string[];       // e.g., ["requirements.txt", "pyproject.toml"]
-    additionalLanguageIds?: string[];  // e.g., for JS: ["typescript", "javascriptreact"]
+    filePatterns?: string[];           // e.g., ["*.py", "**/*.py"]
+    workspaceContains?: string[];      // e.g., ["requirements.txt"]
+    additionalLanguageIds?: string[];  // e.g., ["jupyter"]
   };
 
   // Provider Configuration
   provider: {
     type: "generic" | "standalone" | "custom";
-    binaryName: string;                // e.g., "python-analyzer-provider"
-    binaryArgs: string[];              // CLI arguments for spawning
-    assetSource: {
+    binaryName: string;                // e.g., "generic-external-provider"
+    binaryArgs?: string[];             // CLI arguments for spawning
+    assetSource?: {
       repository: string;              // GitHub repo for binary releases
       releaseTag: string;              // e.g., "v0.8.0-beta.5"
-      assetNamePattern: string;        // Pattern for asset file names
+      assetNamePattern?: string;       // Pattern for asset file names
     };
-    platforms: Platform[];             // Which platforms to support
+    platforms?: Platform[];            // Which platforms to support
   };
 
   // LSP Configuration
   lsp: {
     enabled: boolean;
-    proxyRequired: boolean;            // Does it need JSON-RPC proxy?
-    providerName: string;              // e.g., "generic", "nodejs", "python"
-    socketType: "unix" | "tcp" | "pipe";
+    proxyRequired?: boolean;           // Does it need JSON-RPC proxy?
+    providerName?: string;             // e.g., "python"
+    socketType?: "unix" | "tcp" | "pipe";
   };
 
   // External Dependencies
-  dependencies: {
-    vscodeExtensions: string[];        // e.g., ["ms-python.python"]
+  dependencies?: {
+    vscodeExtensions?: string[];       // e.g., ["ms-python.python"]
     runtimeCheck?: {
       command: string;                 // e.g., "python --version"
       versionPattern?: string;         // Regex to extract version
@@ -230,12 +241,12 @@ interface ExtensionConfig {
   };
 
   // Provider-Specific Configuration
-  providerSpecificConfig: Record<string, unknown>;
+  providerSpecificConfig?: Record<string, unknown>;
 
   // Analysis Configuration
-  analysis: {
-    mode: "source-only" | "full";
-    contextLines: number;              // Default: 10
+  analysis?: {
+    mode?: "source-only" | "full";
+    contextLines?: number;             // Default: 10
   };
 }
 
@@ -244,438 +255,91 @@ interface Platform {
   arch: "x64" | "arm64";
   binaryExtension?: string;            // e.g., ".exe" for Windows
 }
-
-interface Tool {
-  name: string;
-  path?: string;                       // Custom path pattern
-  required: boolean;
-  installInstructions?: string;
-}
-```
-
-### 3.2 Example Configurations
-
-#### Python Extension (with LSP)
-```json
-{
-  "language": "python",
-  "displayName": "Python",
-  "languageId": "python",
-  "activation": {
-    "fileExtensions": [".py", ".pyw"],
-    "filePatterns": ["*.py"],
-    "workspaceContains": ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"]
-  },
-  "provider": {
-    "type": "generic",
-    "binaryName": "generic-external-provider",
-    "binaryArgs": ["-name", "python", "-socket"],
-    "assetSource": {
-      "repository": "konveyor/kai",
-      "releaseTag": "v0.8.0-beta.5",
-      "assetNamePattern": "generic-external-provider-{platform}"
-    },
-    "platforms": [
-      { "os": "linux", "arch": "x64" },
-      { "os": "linux", "arch": "arm64" },
-      { "os": "darwin", "arch": "x64" },
-      { "os": "darwin", "arch": "arm64" },
-      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
-    ]
-  },
-  "lsp": {
-    "enabled": true,
-    "proxyRequired": true,
-    "providerName": "python",
-    "socketType": "unix"
-  },
-  "dependencies": {
-    "vscodeExtensions": ["ms-python.python"],
-    "runtimeCheck": {
-      "command": "python3 --version",
-      "versionPattern": "Python (\\d+\\.\\d+\\.\\d+)",
-      "minVersion": "3.8.0"
-    }
-  },
-  "providerSpecificConfig": {
-    "lspServerName": "python"
-  },
-  "analysis": {
-    "mode": "source-only",
-    "contextLines": 10
-  }
-}
-```
-
-#### Rust Extension (standalone, no LSP proxy)
-```json
-{
-  "language": "rust",
-  "displayName": "Rust",
-  "languageId": "rust",
-  "activation": {
-    "fileExtensions": [".rs"],
-    "filePatterns": ["*.rs"],
-    "workspaceContains": ["Cargo.toml"]
-  },
-  "provider": {
-    "type": "standalone",
-    "binaryName": "rust-analyzer-provider",
-    "binaryArgs": ["--socket"],
-    "assetSource": {
-      "repository": "konveyor/kai",
-      "releaseTag": "v0.9.0",
-      "assetNamePattern": "rust-analyzer-provider-{platform}"
-    },
-    "platforms": [
-      { "os": "linux", "arch": "x64" },
-      { "os": "darwin", "arch": "x64" },
-      { "os": "darwin", "arch": "arm64" },
-      { "os": "win32", "arch": "x64", "binaryExtension": ".exe" }
-    ]
-  },
-  "lsp": {
-    "enabled": false,
-    "proxyRequired": false,
-    "providerName": "rust",
-    "socketType": "unix"
-  },
-  "dependencies": {
-    "vscodeExtensions": [],
-    "runtimeCheck": {
-      "command": "rustc --version",
-      "versionPattern": "rustc (\\d+\\.\\d+\\.\\d+)"
-    }
-  },
-  "providerSpecificConfig": {},
-  "analysis": {
-    "mode": "source-only",
-    "contextLines": 10
-  }
-}
 ```
 
 ---
 
-## Part 4: Interactive Mode Questions
+## Files Generated/Modified
 
-### 4.1 Question Flow
+### New Files Created (in editor-extensions repo)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              Konveyor Extension Generator v0.1.0                 │
-└─────────────────────────────────────────────────────────────────┘
+| File Path | Template | Condition |
+|-----------|----------|-----------|
+| `vscode/{language}/package.json` | `package.json.hbs` | Always |
+| `vscode/{language}/tsconfig.json` | `tsconfig.json.hbs` | Always |
+| `vscode/{language}/webpack.config.js` | `webpack.config.js.hbs` | Always |
+| `vscode/{language}/.eslintrc.json` | `eslintrc.json.hbs` | Always |
+| `vscode/{language}/LICENSE.md` | `LICENSE.md.hbs` | Always |
+| `vscode/{language}/src/extension.ts` | `extension.ts.hbs` | Always |
+| `vscode/{language}/src/{Lang}ExternalProviderManager.ts` | `providerManager.ts.hbs` | Always |
+| `vscode/{language}/src/{Lang}VscodeProxyServer.ts` | `proxyServer.ts.hbs` | If `lsp.proxyRequired` |
+| `vscode/{language}/src/utilities/constants.ts` | `constants.ts.hbs` | Always |
 
-REPOSITORY SETUP
-────────────────
-? Path to editor-extensions repository:
-  > ~/projects/editor-extensions
+### Existing Files Modified
 
-? Base branch to create feature branch from:
-  > main
-
-BASIC INFORMATION
-─────────────────
-? Language identifier (e.g., python, rust, cpp):
-  > python
-
-? Display name for this language:
-  > Python
-
-? VS Code language ID(s) (comma-separated):
-  > python
-
-FILE ACTIVATION
-───────────────
-? File extensions that trigger activation (comma-separated):
-  > .py, .pyw
-
-? Project files that indicate this is a {language} workspace:
-  (comma-separated, e.g., requirements.txt, pyproject.toml)
-  > requirements.txt, pyproject.toml, setup.py, Pipfile
-
-PROVIDER CONFIGURATION
-──────────────────────
-? Provider type:
-  ❯ Generic (uses generic-external-provider with LSP)
-    Standalone (custom provider without LSP proxy)
-    Custom (requires manual configuration)
-
-? Provider binary name:
-  > generic-external-provider
-
-? CLI arguments for the provider (comma-separated):
-  > -name, python, -socket
-
-? GitHub repository for provider assets:
-  > konveyor/kai
-
-? Release tag for assets:
-  > v0.8.0-beta.5
-
-LSP CONFIGURATION
-─────────────────
-? Does this extension use Language Server Protocol?
-  ❯ Yes (with JSON-RPC proxy)
-    Yes (direct LSP)
-    No
-
-? LSP server name for the provider:
-  > python
-
-EXTERNAL DEPENDENCIES
-─────────────────────
-? Required VS Code extensions (comma-separated, or none):
-  > ms-python.python
-
-? Command to check if runtime is installed:
-  > python3 --version
-
-? Minimum required version (or skip):
-  > 3.8.0
-
-? Additional tools required? (y/n):
-  > n
-
-PLATFORM SUPPORT
-────────────────
-? Supported platforms:
-  ◉ Linux x64
-  ◉ Linux ARM64
-  ◉ macOS x64
-  ◉ macOS ARM64
-  ◉ Windows x64
-
-GIT OPTIONS
-───────────
-? Branch name for changes:
-  > feature/python-extension
-
-? Push branch to remote after generation? (y/n):
-  > y
-
-? Create pull request? (requires gh CLI) (y/n):
-  > y
-
-CONFIRMATION
-────────────
-Generated configuration:
-{
-  "language": "python",
-  "displayName": "Python",
-  ...
-}
-
-Branch: feature/python-extension (from main)
-Files to create: 9
-Files to modify: 12
-
-? Proceed with extension generation? (Y/n):
-  > Y
-```
-
-### 4.2 Question Summary
-
-| # | Category | Question | Type | Required | Default |
-|---|----------|----------|------|----------|---------|
-| 1 | Repo | Path to editor-extensions | path | Yes | ./editor-extensions |
-| 2 | Repo | Base branch | text | Yes | main |
-| 3 | Basic | Language identifier | text | Yes | - |
-| 4 | Basic | Display name | text | Yes | Capitalized language |
-| 5 | Basic | VS Code language IDs | text | Yes | Same as language |
-| 6 | Activation | File extensions | list | Yes | - |
-| 7 | Activation | Workspace files | list | No | [] |
-| 8 | Provider | Provider type | choice | Yes | generic |
-| 9 | Provider | Binary name | text | Yes | Based on type |
-| 10 | Provider | Binary args | list | Yes | Based on type |
-| 11 | Provider | Asset repository | text | Yes | konveyor/kai |
-| 12 | Provider | Asset release tag | text | Yes | Latest |
-| 13 | LSP | LSP type | choice | Yes | Based on provider |
-| 14 | LSP | Provider name | text | Conditional | Same as language |
-| 15 | Dependencies | VS Code extensions | list | No | [] |
-| 16 | Dependencies | Runtime check | text | No | - |
-| 17 | Dependencies | Min version | text | No | - |
-| 18 | Dependencies | Additional tools | list | No | [] |
-| 19 | Platforms | Supported platforms | multi-select | Yes | All 5 |
-| 20 | Git | Branch name | text | Yes | feature/{lang}-extension |
-| 21 | Git | Push to remote | boolean | No | false |
-| 22 | Git | Create PR | boolean | No | false |
+| File Path | Modification |
+|-----------|--------------|
+| `package.json` | Add to workspaces array, add package script |
+| `.github/workflows/ci-repo.yml` | Add package step for extension |
+| `scripts/collect-assets.js` | Add asset download configuration |
+| `scripts/copy-dist.js` | Add dist copy logic |
+| `scripts/package-extensions.js` | Add to VALID_EXTENSIONS array |
+| `.vscode/launch.json` | Add to extensionDevelopmentPath |
+| `konveyor-extensions.code-workspace` | Add folder entry |
 
 ---
 
-## Part 5: Files Generated/Modified
-
-### 5.1 New Files Created (in editor-extensions repo)
-
-| File Path | Template | Description |
-|-----------|----------|-------------|
-| `vscode/{language}/package.json` | `package.json.hbs` | Extension manifest |
-| `vscode/{language}/src/extension.ts` | `extension.ts.hbs` | Main entry point |
-| `vscode/{language}/src/{Language}ExternalProviderManager.ts` | `providerManager.ts.hbs` | Provider subprocess manager |
-| `vscode/{language}/src/{Language}VscodeProxyServer.ts` | `proxyServer.ts.hbs` | LSP proxy (if enabled) |
-| `vscode/{language}/src/utilities/constants.ts` | `constants.ts.hbs` | Build-time constants |
-| `vscode/{language}/tsconfig.json` | `tsconfig.json.hbs` | TypeScript config |
-| `vscode/{language}/webpack.config.js` | `webpack.config.js.hbs` | Webpack config |
-| `vscode/{language}/LICENSE.md` | `LICENSE.md.hbs` | Apache 2.0 license |
-| `vscode/{language}/.eslintrc.json` | `eslintrc.json.hbs` | ESLint config |
-
-### 5.2 Existing Files Modified
-
-| File Path | Modification | Description |
-|-----------|--------------|-------------|
-| `package.json` | Add workspace | Add to workspaces array |
-| `package.json` | Add scripts | Add package-{language} script |
-| `package.json` | Modify dev script | Include new extension |
-| `.github/workflows/ci-repo.yml` | Add build step | Package new extension |
-| `.github/workflows/ci-repo.yml` | Add artifact | Upload VSIX |
-| `.github/workflows/release.yml` | Add publish step | Publish to marketplaces |
-| `scripts/collect-assets.js` | Add asset config | Download provider binaries |
-| `scripts/copy-dist.js` | Add copy logic | Copy build artifacts |
-| `scripts/package-extensions.js` | Add extension type | Include in packaging |
-| `.vscode/launch.json` | Add debug config | Development debugging |
-| `konveyor-extensions.code-workspace` | Add folder | Workspace configuration |
-| `tests/.env.example` | Add VSIX var | Test environment |
-
----
-
-## Part 6: Project Structure
-
-```
-extension-generator/
-├── package.json              # NPM package config
-├── tsconfig.json             # TypeScript config
-├── .gitignore
-├── README.md                 # User documentation
-├── PLAN.md                   # This file
-│
-├── src/
-│   ├── index.ts              # CLI entry point
-│   ├── cli.ts                # Commander.js CLI setup
-│   │
-│   ├── lib/
-│   │   ├── interactive.ts    # Inquirer prompts
-│   │   ├── config-loader.ts  # JSON/YAML config loading
-│   │   ├── validator.ts      # Zod schema validation
-│   │   ├── generator.ts      # File generation logic
-│   │   ├── modifier.ts       # Existing file modifications
-│   │   ├── git.ts            # Git operations (simple-git)
-│   │   └── utils.ts          # Helper utilities
-│   │
-│   └── types/
-│       └── config.ts         # TypeScript interfaces
-│
-├── templates/                 # Handlebars templates
-│   ├── extension.ts.hbs
-│   ├── providerManager.ts.hbs
-│   ├── proxyServer.ts.hbs
-│   ├── constants.ts.hbs
-│   ├── package.json.hbs
-│   ├── webpack.config.js.hbs
-│   ├── tsconfig.json.hbs
-│   ├── eslintrc.json.hbs
-│   └── LICENSE.md.hbs
-│
-└── configs/                   # Example configurations
-    ├── python.json
-    ├── rust.json
-    └── cpp.json
-```
-
----
-
-## Part 7: Implementation Phases
-
-### Phase 1: Core Infrastructure
-- [ ] Set up TypeScript project with proper build
-- [ ] Implement CLI with commander.js
-- [ ] Create Zod validation schema
-- [ ] Implement config loader (JSON/YAML)
-
-### Phase 2: Git Operations
-- [ ] Implement repository validation
-- [ ] Implement branch creation
-- [ ] Implement commit generation
-- [ ] Implement push operations
-- [ ] Implement PR creation (gh CLI)
-
-### Phase 3: Interactive Mode
-- [ ] Implement all prompts with inquirer
-- [ ] Add input validation
-- [ ] Add default value logic
-- [ ] Add confirmation step
-
-### Phase 4: File Generation
-- [ ] Create all Handlebars templates
-- [ ] Implement template rendering
-- [ ] Implement file writing with conflict detection
-
-### Phase 5: File Modification
-- [ ] Implement package.json updates
-- [ ] Implement workflow YAML updates
-- [ ] Implement script updates
-
-### Phase 6: Testing & Documentation
-- [ ] Test with Python extension generation
-- [ ] Test with Rust extension generation
-- [ ] Write README documentation
-- [ ] Add example configurations
-
----
-
-## Part 8: Decision Matrix
+## Decision Matrix
 
 ### LSP vs Standalone Provider
 
-| Factor | Use LSP (Generic Provider) | Use Standalone |
-|--------|---------------------------|----------------|
+| Factor | Use Generic (LSP) | Use Standalone |
+|--------|-------------------|----------------|
 | Language has VS Code extension | Yes | Maybe |
 | Need hover/goto/completion | Yes | No |
 | Tree-sitter available | Either | Preferred |
 | Custom analysis engine | No | Yes |
 | Complex dependency resolution | Generic handles | Custom needed |
 
-### Platform Mapping
+### Generated Files Comparison
 
-| Platform | Directory Name | Binary Extension |
-|----------|---------------|------------------|
-| Linux x64 | `linux-x86_64` | (none) |
-| Linux ARM64 | `linux-aarch64` | (none) |
-| macOS x64 | `macos-x86_64` | (none) |
-| macOS ARM64 | `macos-arm64` | (none) |
-| Windows x64 | `windows-x64` | `.exe` |
+| Feature | Generic (LSP) | Standalone |
+|---------|---------------|------------|
+| Provider Manager | Yes | Yes |
+| Proxy Server | Yes | No |
+| Total Files | 9 | 8 |
 
 ---
 
-## Part 9: Error Handling
+## Future Enhancements
 
-### Repository Errors
-- **Not a git repo**: Provide instructions to clone editor-extensions
-- **Dirty working tree**: Suggest commit/stash, or use --force to stash
-- **Branch already exists**: Prompt to use different name or delete existing
-- **Push failed**: Check remote permissions, provide auth instructions
+### Potential Improvements
 
-### Configuration Errors
-- **Missing required fields**: List all missing fields
-- **Invalid language ID**: Must match `/^[a-z][a-z0-9-]*$/`
-- **Duplicate extension**: Check if vscode/{language}/ already exists
-- **Invalid platform**: Must be one of the supported platforms
+- [ ] Add YAML config file support (currently JSON only in samples)
+- [ ] Add `--update` mode to update existing extensions
+- [ ] Add template customization support
+- [ ] Add validation for GitHub release existence
+- [ ] Add automated testing with Jest
+- [ ] Publish to npm registry
+- [ ] Add GitHub Actions workflow for releases
 
-### Template Errors
-- **Template not found**: Check templates/ directory
-- **Render error**: Show Handlebars error with context
+### Language-Specific Templates
+
+- [ ] Add JavaScript/TypeScript-specific template
+- [ ] Add Java-specific template with Maven/Gradle support
+- [ ] Add C#-specific template with .NET support
 
 ---
 
-## Part 10: Next Steps
+## References
 
-1. **Review this plan** - Get feedback on approach
-2. **Initialize project** - npm init, install dependencies
-3. **Implement CLI** - commander.js setup
-4. **Implement validation** - Zod schemas
-5. **Implement git operations** - simple-git wrapper
-6. **Implement interactive mode** - inquirer prompts
-7. **Create templates** - Handlebars templates
-8. **Implement generator** - File generation
-9. **Implement modifier** - Existing file updates
-10. **Test end-to-end** - Generate Python extension
-11. **Document** - README with usage examples
+### Existing Extensions (Patterns)
+
+- **Java Extension**: `vscode/java/` - Generic provider with LSP
+- **Go Extension**: `vscode/go/` - Generic provider with LSP
+- **C# Extension**: `vscode/c-sharp/` - Standalone provider
+
+### Key PRs
+
+- [C# Extension PR #1124](https://github.com/konveyor/editor-extensions/pull/1124)
+- [Go Extension PR #976](https://github.com/konveyor/editor-extensions/pull/976)

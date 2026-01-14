@@ -40,9 +40,15 @@ export async function prepareRepository(
     console.warn("Warning: Could not fetch from remote");
   }
 
-  // Check for uncommitted changes
+  // Check for uncommitted changes (ignore untracked files)
   const status = await git.status();
-  if (!status.isClean()) {
+  const hasUncommittedChanges =
+    status.staged.length > 0 ||
+    status.modified.length > 0 ||
+    status.deleted.length > 0 ||
+    status.conflicted.length > 0;
+
+  if (hasUncommittedChanges) {
     throw new Error(
       "Repository has uncommitted changes. Please commit or stash them first."
     );

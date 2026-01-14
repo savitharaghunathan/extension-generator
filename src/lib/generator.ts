@@ -293,15 +293,16 @@ async function modifyExistingFiles(
     let ciContent = await readFile(ciWorkflowPath, "utf-8");
 
     // Add package step if not exists
-    const packageStep = `      - name: Package ${config.displayName} extension
+    const packageStep = `- name: Package ${config.displayName} extension
         run: npm run package-${config.language}
         if: runner.os == 'Linux'`;
 
     if (!ciContent.includes(`package-${config.language}`)) {
       // Find a good insertion point (before Upload VSIX artifacts)
+      // Match the indentation of existing steps (6 spaces)
       ciContent = ciContent.replace(
-        /(- name: Upload VSIX artifacts)/,
-        `${packageStep}\n\n      $1`
+        /(\n)(      )(- name: Upload VSIX artifacts)/,
+        `$1$2${packageStep}\n\n$2$3`
       );
 
       if (!dryRun) {
